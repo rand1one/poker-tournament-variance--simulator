@@ -28,3 +28,9 @@ needed, and fuzziness of the validity of data. and it is difficult to get a samp
 for the questions I am trying to answer. This simulator attempts to fix that by using theoretical methods.
 """
 )
+
+st.divider()
+st.info(
+    "I used Claude for 100% of the code on this project, and several design choices. "
+    "All words on the \"About\" and \"Methodology\" pages are my own."
+)
