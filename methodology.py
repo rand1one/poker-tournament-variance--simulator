@@ -1,20 +1,21 @@
 ﻿"""The Methodology page. Everything below is plain text and formulas, so it is easy to edit."""
 import streamlit as st
 
-from shared_ui import restore_widget_state
+from shared_ui import restore_widget_state, soft_links
 
 restore_widget_state()  # keeps the simulator inputs alive while you read this page
+soft_links()
 
 st.title("Methodology")
 
 with st.container(border=True):
     st.markdown("**Contents**")
     st.markdown(
-        "1. [Using C to Understand Poker Tournaments](#using-c)\n"
+        "1. [Using the Chance of Doubling Up as a Skill Proxy](#using-c)\n"
         "2. [Modeling Survival Effects](#survival-effects)"
     )
 
-st.header("Using C to Understand Poker Tournaments", anchor="using-c")
+st.header("Using the Chance of Doubling Up as a Skill Proxy", anchor="using-c")
 st.markdown(
     """
 Imagine you are playing an equally skilled 128 person tournament where all the prize money is given to first place.
@@ -98,7 +99,7 @@ in a QQ vs AK situation, where your chance of doubling is only 0.56.
 st.header("Modeling Survival Effects", anchor="survival-effects")
 st.markdown(
     """
-The Survival Adjusted simulator is an attempt to mitigate the limitation that assuming C remains constant throughout the
+The Survival Effect Simulator is an attempt to mitigate the limitation that assuming C remains constant throughout the
 tournament presents. In his book, Chen takes C to be constant throughout the tournament, and assumes changes to C will be
 negligible. This makes using C much easier, but limits its validity. In reality, as a tournament progresses, players with
 higher Cs are more likely to remain in the field. This is commonly observed in the fact that as you get deeper in the
@@ -128,7 +129,7 @@ players. While more accurate, there is no good data on the expected proportions,
 the tournament. In the most competitive, highest-stakes tournaments, there may be only 10% recreational players, whereas
 in a tournament like the Main Event, it is likely >75%. I decided to add the option of both.
 
-For the rec/pro model, I assumed a difference of 0.075 in average C values between the two groups. The C value of
+For the rec/pro model, I assumed a difference of 0.075 in average C values between the two groups. The average C value of
 recreationals changes linearly depending on the % entered, and may be anywhere from 0.425 to 0.5, with the professional
 mean being 0.075 points higher. The specific group means change depending on the proportion chosen. The remaining
 fraction of professionals is then generated around a C that makes the field average to 0.5. Example: If 80% recreationals

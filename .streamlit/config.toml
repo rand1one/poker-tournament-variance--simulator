@@ -1,0 +1,9 @@
+[theme]
+base = "light"
+font = "Merriweather:https://fonts.googleapis.com/css2?family=Merriweather:wght@300..900&display=swap"
+primaryColor = "#9a5b2e"
+backgroundColor = "#f6efe0"
+secondaryBackgroundColor = "#ece1c8"
+textColor = "#3a2f25"
+linkColor = "#7a4a25"
+baseRadius = "none"

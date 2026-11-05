@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from model import (PAYOUT_STRUCTURES, bankroll_paths, bounty_totals, expected_payouts, finish_probs, payouts,
-                   solve_C)
+from model import PAYOUT_STRUCTURES, bankroll_paths, finish_probs, payouts, solve_C
 from shared_ui import base_inputs, restore_widget_state, run_inputs
 
 restore_widget_state()
@@ -21,7 +20,7 @@ def carry_over_skill():
         st.session_state.sim_roi_in = max(st.session_state.last_roi_pct, -99.0)
 
 
-def simulate(p, v, n_paid, mystery, buyin, start_bankroll, n_tournaments, n_sims):
+def simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims):
     """Bankroll after each tournament for each run, shape (n_sims, n_tournaments).
     A run stops playing (bankroll stays flat) once it can't cover the buy-in."""
     rng = np.random.default_rng()
@@ -29,36 +28,46 @@ def simulate(p, v, n_paid, mystery, buyin, start_bankroll, n_tournaments, n_sims
     cdf[-1] = 1.0
     places = np.searchsorted(cdf, rng.random((n_sims, n_tournaments)))
     winnings = v[places]
-    if mystery:
-        paid = places < n_paid
-        winnings[paid] += bounty_totals(v[:n_paid], int(paid.sum()), rng)
     return bankroll_paths(winnings - buyin, buyin, start_bankroll)
 
 
 # ---------- Inputs ----------
-st.title("Tournament Variance Simulator")
+st.title("Poker Tournament Variance Simulator")
 
-inputs_col, output_col = st.columns([1, 3], gap="large")
+inputs_col, output_col = st.columns([1.15, 3], gap="large")
 with inputs_col:
-    st.subheader("Variables")
-    with st.container(border=True):
+    with st.container(border=True, key="inputs_box"):
         X, buyin, structure, start_bankroll = base_inputs("sim")
-        mode = st.radio("Specify skill by", ["ROI", "C"], horizontal=True, key="sim_mode", on_change=carry_over_skill,
-                        help="Enter either ROI or C. The other one is calculated from it.\n\n"
-                             "C = Chance of doubling up")
+        mode = st.radio("Skill by", ["ROI", "C"], horizontal=True, key="sim_mode", on_change=carry_over_skill,
+                        label_visibility="collapsed")
+        st.html(  # a "What's this?" note that shows a tooltip on hover
+            """<style>
+            .whatsthis { position: relative; display: inline-block; font-size: 0.75rem; color: #7a4a25;
+                         cursor: help; border-bottom: 1px dotted #7a4a25; }
+            .whatsthis .tip { display: none; position: absolute; left: 0; top: 100%; width: 13rem;
+                              background: #3a2f25; color: #ffffff; padding: 0.5rem 0.6rem; font-size: 0.75rem;
+                              line-height: 1.35; z-index: 1000; cursor: default; }
+            .whatsthis .tip a { color: #ffffff; text-decoration: underline; }
+            .whatsthis:hover .tip { display: block; }
+            </style>
+            <span class="whatsthis">What's this?<span class="tip">Choose ROI or read the
+            <a href="/about" target="_self">About</a> page to understand C</span></span>"""
+        )
+        # ROI is always above C. The one you pick is an input in its row, the other is calculated in its row.
+        roi_slot = st.container()
+        c_slot = st.container()
+        calc_slot = st.container()  # effective tournament size, filled in below once C / ROI have been worked out
         roi_pct = C_in = None
         if mode == "ROI":
-            roi_pct = st.number_input("ROI (%)", min_value=-99.0, step=1.0, format="%.2f", key="sim_roi_in")
+            roi_pct = roi_slot.number_input("ROI (%)", min_value=-99.0, step=1.0, format="%.2f", key="sim_roi_in")
         else:
-            C_in = st.number_input("C", min_value=0.001, max_value=0.999, step=0.01, format="%.6f", key="sim_C_in")
-        calc_slot = st.container()  # filled in below once C / ROI have been worked out
+            C_in = c_slot.number_input("C", min_value=0.001, max_value=0.999, step=0.01, format="%.6f", key="sim_C_in")
         n_tournaments, n_sims = run_inputs("sim")
-        mystery = st.toggle("Mirror mystery bounties", key="sim_mystery")
     run_slot = st.container()  # the Run simulation button goes here, below the box
 
 with output_col:
     # ---------- Reset state whenever a variable changes ----------
-    params = (X, buyin, structure, start_bankroll, mode, roi_pct, C_in, n_tournaments, n_sims, mystery)
+    params = (X, buyin, structure, start_bankroll, mode, roi_pct, C_in, n_tournaments, n_sims)
     if st.session_state.get("params") != params:
         st.session_state.params = params
         st.session_state.bankrolls = None
@@ -67,60 +76,46 @@ with output_col:
     if PAYOUT_STRUCTURES[structure](X) is None:
         st.error(f"The {structure} structure has no payout data for {X} players yet.")
         st.stop()
-    v, n_paid = payouts(X, buyin, structure, mystery)
-    ev_v = expected_payouts(v, n_paid, mystery)  # expected payout per place, incl. bounties
-
-    # ROI <-> C is always worked out on the regular (non-mystery) payouts, so that ROI / C
-    # only describe how likely you are to finish in each place. Bounties only change what
-    # those finishes pay.
-    reg_v, _ = payouts(X, buyin, structure, False)
+    v, _ = payouts(X, buyin, structure, False)
     if mode == "ROI":
         roi = roi_pct / 100
-        max_roi = reg_v[0] / buyin - 1
+        max_roi = v[0] / buyin - 1
         if roi >= max_roi:
             st.error(f"ROI must be below {max_roi * 100:.0f}% (the 1st place payout) for these settings.")
             st.stop()
-        C = solve_C(X, buyin, roi, reg_v)
+        C = solve_C(X, buyin, roi, v)
     else:
         C = C_in
 
     p = finish_probs(C, X)
     p = np.clip(p, 0, None)
     p = p / p.sum()
-    implied_roi = p @ reg_v / buyin - 1
-    mystery_roi = p @ ev_v / buyin - 1
+    implied_roi = p @ v / buyin - 1
     st.session_state.last_C = round(float(C), 6)
     st.session_state.last_roi_pct = round(float(implied_roi) * 100, 2)
 
     if mode == "ROI":
-        calc_slot.metric("C (calculated)", f"{C:.6f}")
+        c_slot.metric("C (calculated)", f"{C:.6f}")
     else:
-        calc_slot.metric("ROI (calculated)", f"{implied_roi:.2%}")
+        roi_slot.metric("ROI (calculated)", f"{implied_roi:.2%}")
 
     # Effective tournament size k: (2C)^log2(k) = 1 + ROI, so k = 2^(ln(1 + ROI) / ln(2C)).
     # Undefined at C = 0.5 (2C = 1); shown as n/a there.
     if abs(2 * C - 1) < 1e-9 or implied_roi <= -1:
-        calc_slot.metric("Effective tournament size (calculated)", "n/a",
+        calc_slot.metric("Effective tournament size", "n/a",
                          help="Solves (2C)^log2(k) = 1 + ROI for k. Undefined when C = 0.5.")
     else:
         eff_size = 2 ** (np.log(1 + implied_roi) / np.log(2 * C))
-        calc_slot.metric("Effective tournament size (calculated)", f"{eff_size:,.1f}",
+        calc_slot.metric("Effective tournament size", f"{eff_size:,.1f}",
                          help="Solves (2C)^log2(k) = 1 + ROI for k: the winner-take-all field size that would "
                               "give this C the same ROI.")
-
-    st.caption(
-        f"P(1st) = {p[0]:.4%} | prize pool = ${X * buyin:,.2f} | "
-        f"C = {C:.6f} | ROI = {implied_roi:.2%}"
-        + (f" | actual expected ROI with bounties = {mystery_roi:.2%}" if mystery else "")
-    )
-
 
     too_big = n_sims * n_tournaments > 250_000
     if too_big:
         st.error("Simulations x tournaments per run must be 250,000 or fewer so the graph stays responsive.")
 
-    if run_slot.button("Run simulation", type="primary", disabled=too_big, width="stretch"):
-        st.session_state.bankrolls = simulate(p, v, n_paid, mystery, buyin, start_bankroll, n_tournaments, n_sims)
+    if run_slot.button("Run", type="primary", disabled=too_big, width="stretch"):
+        st.session_state.bankrolls = simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims)
 
     # ---------- Graph ----------
     bankrolls = st.session_state.bankrolls
@@ -129,8 +124,7 @@ with output_col:
         final = bankrolls[:, -1]
 
         # what the model expects: every tournament played at the expected ROI (ignores runs stopping when broke)
-        expected_roi = mystery_roi if mystery else implied_roi
-        expected_end = start_bankroll + n_tournaments * buyin * expected_roi
+        expected_end = start_bankroll + n_tournaments * buyin * implied_roi
 
         # Eleven lines for real runs, picked by ranking the runs on their final bankroll: the one that ended
         # lowest (Worst run), the 10th, 20th, ... 90th percentile, and the one that ended highest (Best run).
@@ -148,7 +142,7 @@ with output_col:
         lines.append(pd.DataFrame({"Tournament": steps, "Line": "Median bankroll",
                                    "Bankroll": np.median(bankrolls, axis=0)}))
         lines.append(pd.DataFrame({"Tournament": steps, "Line": "Expected value (EV)",
-                                   "Bankroll": start_bankroll + steps * buyin * expected_roi}))
+                                   "Bankroll": start_bankroll + steps * buyin * implied_roi}))
         long_df = pd.concat(lines)
 
         # legend order, top to bottom: Best run, 90th percentile, ... , 10th percentile, Worst run, then the median and EV
@@ -175,12 +169,6 @@ with output_col:
             .properties(height=450)
         )
         st.altair_chart(chart, width="stretch")
-        st.caption(
-            "The colored lines are real runs: the one that ended lowest (worst run), the ones at the 10th, 20th, ... 90th "
-            "percentile of ending bankroll, and the one that ended highest (best run). The red line is the median bankroll "
-            "across all runs at each tournament, and the dashed orange line is the expected value (EV): your starting "
-            "bankroll plus the expected profit per tournament times the tournaments played."
-        )
 
         st.subheader("Distribution of ending bankrolls")
         if runs < 2 or final.min() == final.max():
@@ -259,27 +247,23 @@ with output_col:
             f"{runs} simulations of {length} tournaments. Risk of ruin = share of runs where the bankroll "
             "dropped below the buy-in at any point. Likelihood of loss = share of runs ending below the starting bankroll."
         )
-    else:
-        st.info("Press **Run simulation** to run your simulations.")
 
     # ---------- Finish probability table ----------
-    with st.expander("Probability of finishing in each place"):
-        prob_df = pd.DataFrame({
-            "Place": np.arange(1, X + 1),
-            "Probability": p * 100,
-            "Cumulative (this place or better)": np.cumsum(p) * 100,
-            "Payout": v,
-        })
-        if mystery:
-            prob_df["Expected payout incl. bounties"] = ev_v
-        st.dataframe(
-            prob_df,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Probability": st.column_config.NumberColumn(format="%.4f%%"),
-                "Cumulative (this place or better)": st.column_config.NumberColumn(format="%.4f%%"),
-                "Payout": st.column_config.NumberColumn(format="$%.2f"),
-                "Expected payout incl. bounties": st.column_config.NumberColumn(format="$%.2f"),
-            },
-        )
+    if bankrolls is not None:  # only once a simulation has been run
+        with st.expander("Probability of finishing in each place"):
+            prob_df = pd.DataFrame({
+                "Place": np.arange(1, X + 1),
+                "Probability": p * 100,
+                "Cumulative (this place or better)": np.cumsum(p) * 100,
+                "Payout": v,
+            })
+            st.dataframe(
+                prob_df,
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Probability": st.column_config.NumberColumn(format="%.4f%%"),
+                    "Cumulative (this place or better)": st.column_config.NumberColumn(format="%.4f%%"),
+                    "Payout": st.column_config.NumberColumn(format="$%.2f"),
+                },
+            )

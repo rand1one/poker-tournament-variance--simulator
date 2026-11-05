@@ -1,4 +1,4 @@
-"""Survival Adjusted page: every tournament is played out battle by battle, and you are one player with a given C."""
+"""Survival Effect Simulator page: every tournament is played out battle by battle, and you are one player with a given C."""
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -21,34 +21,25 @@ def carry_over_skill():
         st.session_state.surv_roi_in = max(st.session_state.surv_last_roi_pct, -99.0)
 
 
-st.title("Survival Adjusted")
-st.caption(
-    "This experimental tool simulates tournaments by generating players with variable skill levels, and "
-    "iteratively battling them to determine finishing position. This attempts to model relative skill dynamics "
-    "as the field consolidates."
-)
+st.title("Survival Effect Simulator")
 
 # ---------- Inputs ----------
-inputs_col, output_col = st.columns([1, 3], gap="large")
+inputs_col, output_col = st.columns([1.15, 3], gap="large")
 with inputs_col:
-    st.subheader("Variables")
-    with st.container(border=True):
+    with st.container(border=True, key="inputs_box"):
         X, buyin, structure, start_bankroll = base_inputs("surv")
-        mode = st.radio("Specify skill by", ["ROI", "C"], horizontal=True, key="surv_mode", on_change=carry_over_skill,
-                        help="Enter either ROI or C. The other one is calculated from it.\n\n"
-                             "C = Chance of doubling up")
+        mode = st.radio("Skill by", ["ROI", "C"], horizontal=True, key="surv_mode", on_change=carry_over_skill,
+                        label_visibility="collapsed")
+        # ROI is always above C. The one you pick is an input in its row, the other is calculated in its row.
+        roi_slot = st.container()
+        c_slot = st.container()
         roi_pct = C_in = None
         if mode == "ROI":
-            roi_pct = st.number_input("ROI (%)", min_value=-99.0, step=1.0, format="%.2f", key="surv_roi_in")
+            roi_pct = roi_slot.number_input("ROI (%)", min_value=-99.0, step=1.0, format="%.2f", key="surv_roi_in")
         else:
-            C_in = st.number_input("C", min_value=0.001, max_value=0.999, step=0.01, format="%.6f", key="surv_C_in")
-        calc_slot = st.empty()  # filled in below once C / ROI have been worked out
-        rec_pct = st.number_input("Recreational players (%)", min_value=0.0, max_value=100.0, step=5.0, format="%.1f",
-                                  key="surv_rec_pct",
-                                  help="Share of the field (apart from you and your counterpart) that are recreational "
-                                       "players. Their average C rises linearly from 0.425 (0% recreational) to 0.5 "
-                                       "(100%), and everyone else is always 0.075 higher, which keeps the average C of "
-                                       "the field at exactly 0.5. 0% gives a single group around 0.5.")
+            C_in = c_slot.number_input("C", min_value=0.001, max_value=0.999, step=0.01, format="%.6f", key="surv_C_in")
+        rec_pct = st.number_input("Recreational (%)", min_value=0.0, max_value=100.0, step=5.0, format="%.1f",
+                                  key="surv_rec_pct")
         field_slot = st.container()  # both groups' Cs, filled in below
         n_tournaments, n_sims = run_inputs("surv")
     run_slot = st.container()  # the Run many simulations button goes here, below the box
@@ -83,10 +74,9 @@ with output_col:
     st.session_state.surv_last_C = round(float(C), 6)
     st.session_state.surv_last_roi_pct = round(float(formula_roi) * 100, 2)
     if mode == "ROI":
-        calc_slot.metric("C (calculated)", f"{C:.6f}")
+        c_slot.metric("C (calculated)", f"{C:.6f}")
     else:
-        calc_slot.metric("ROI (calculated)", f"{formula_roi:.2%}")
-    st.caption(f"Your C = {C:.6f}, with a counterpart at C = {1 - C:.6f} added to the field.")
+        roi_slot.metric("ROI (calculated)", f"{formula_roi:.2%}")
 
     # The other X - 2 players: n_rec recreational players around rec_c, the rest PRO_EDGE higher. rec_c rises with the
     # recreational share so that the average of the whole group is exactly 0.5.
@@ -95,27 +85,19 @@ with output_col:
     rec_c = rec_c_for(X, n_rec)
     other_c = pro_c(X, n_rec, rec_c)
     if n_rec > 0:
-        field_slot.metric("Recreational players' C (calculated)", f"{rec_c:.4f}",
-                          help="Rises linearly from 0.425 with no recreational players to 0.5 with all of them.")
+        field_slot.metric("Recreational players' C (calculated)", f"{rec_c:.4f}")
     if n_rec < n_others:
-        field_slot.metric("Other players' C (calculated)", f"{other_c:.4f}",
-                          help="Always 0.075 above the recreational players' C.")
-    if n_rec > 0:
-        st.caption(f"The other {n_others} players: {n_rec} recreational (around C = {rec_c:.3f}) and "
-                   f"{n_others - n_rec} around C = {other_c:.4f}.")
+        field_slot.metric("Other players' C (calculated)", f"{other_c:.4f}")
 
     total_tournaments = n_sims * n_tournaments
     entries = total_tournaments * X
     too_slow = entries > MAX_PLAYER_ENTRIES
-    st.caption(f"Plays {n_sims:,} runs of {n_tournaments:,} tournaments ({total_tournaments:,} in all).")
     if too_slow:
         st.error(f"Simulations x tournaments per run x players must be {MAX_PLAYER_ENTRIES:,} or fewer. "
                  "Lower one of them.")
-    else:
-        st.caption(f"{entries:,} player-entries to simulate: roughly {max(1, round(entries / ENTRIES_PER_SECOND))} seconds.")
 
     # ---------- Run ----------
-    if run_slot.button("Run many simulations", type="primary", disabled=too_slow, width="stretch"):
+    if run_slot.button("Run", type="primary", disabled=too_slow, width="stretch"):
         bar = st.progress(0.0, text=f"0 of {n_sims:,} simulations run")
 
         def show_progress(done, total):
@@ -143,14 +125,9 @@ with output_col:
     # ---------- Results ----------
     many = st.session_state.many
     if many is None:
-        st.info("Press **Run many simulations** to run your simulations.")
         st.stop()
 
     f = many["final"]
-    st.caption(f"Results for C = {many['c']:.6f} (counterpart {1 - many['c']:.6f}), "
-               f"{len(f):,} runs of {n_tournaments:,} tournaments. The rest of the field: {many['field']}. "
-               f"The finish-probability formula gives an ROI of "
-               f"{many['formula_roi']:.2%} for this C; the simulated ROI is in the table below.")
     st.dataframe(
         pd.DataFrame({
             "ROI": [many["roi"]],
@@ -165,10 +142,10 @@ with output_col:
         hide_index=True,
         width="stretch",
         column_config={
-            "ROI": st.column_config.NumberColumn(format="percent", help="Average payout / buy-in - 1, over every tournament played"),
-            "Std dev": st.column_config.NumberColumn(format="$%.2f", help="Standard deviation of the ending bankroll across runs"),
-            "Probability of loss": st.column_config.NumberColumn(format="percent", help="Share of runs ending below the starting bankroll"),
-            "Risk of ruin": st.column_config.NumberColumn(format="percent", help="Share of runs where the bankroll dropped below the buy-in"),
+            "ROI": st.column_config.NumberColumn(format="percent"),
+            "Std dev": st.column_config.NumberColumn(format="$%.2f"),
+            "Probability of loss": st.column_config.NumberColumn(format="percent"),
+            "Risk of ruin": st.column_config.NumberColumn(format="percent"),
             **{c: st.column_config.NumberColumn(format="$%.2f") for c in
                ["Median bankroll", "Max bankroll", "Min bankroll", "Average bankroll"]},
         },
