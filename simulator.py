@@ -243,10 +243,6 @@ with output_col:
                 "Likelihood of loss": st.column_config.NumberColumn(format="percent"),
             },
         )
-        st.caption(
-            f"{runs} simulations of {length} tournaments. Risk of ruin = share of runs where the bankroll "
-            "dropped below the buy-in at any point. Likelihood of loss = share of runs ending below the starting bankroll."
-        )
 
     # ---------- Finish probability table ----------
     if bankrolls is not None:  # only once a simulation has been run
