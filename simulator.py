@@ -1,13 +1,55 @@
 """Tournament Variance Simulator page: describe your skill with ROI or C, then simulate bankroll paths from the formula."""
+import random
+from urllib.parse import urlencode
+
 import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-from model import PAYOUT_STRUCTURES, bankroll_paths, finish_probs, payouts, solve_C
+from model import MAX_PLAYERS, PAYOUT_STRUCTURES, bankroll_paths, finish_probs, payouts, solve_C
 from shared_ui import base_inputs, restore_widget_state, run_inputs
 
 restore_widget_state()
+
+# "Save results in new tab" opens this page with the inputs and the random seed in the web address. Opening such an
+# address fills the inputs and replays the same simulation, so the new tab shows exactly the same results.
+LINK_FIELDS = {  # address key -> (input key, converter, lowest, highest)
+    "fs": ("sim_players", int, 10, MAX_PLAYERS),
+    "bi": ("sim_buyin", float, 0.01, None),
+    "bk": ("sim_bankroll", float, 0.0, None),
+    "nt": ("sim_n_tournaments", int, 1, 10000),
+    "ns": ("sim_n_sims", int, 1, 1000),
+    "roi": ("sim_roi_in", float, -99.0, None),
+    "c": ("sim_C_in", float, 0.001, 0.999),
+}
+
+
+def apply_saved_link():
+    """If the page was opened from a saved-results address, fill the inputs and queue the same simulation."""
+    q = st.query_params
+    if "seed" not in q or st.session_state.get("link_loaded"):
+        return
+    st.session_state.link_loaded = True
+    try:
+        values = {}
+        for key, (field, convert, low, high) in LINK_FIELDS.items():
+            x = convert(q[key])
+            x = max(x, low)
+            values[field] = min(x, high) if high is not None else x
+        if q["st"] not in PAYOUT_STRUCTURES or q["mode"] not in ("ROI", "C"):
+            raise ValueError("unknown structure or mode")
+        values["sim_structure"], values["sim_mode"] = q["st"], q["mode"]
+        seed = int(q["seed"])
+    except (KeyError, ValueError):
+        st.query_params.clear()
+        return
+    st.session_state.update(values)
+    st.session_state.auto_seed = seed
+    st.query_params.clear()
+
+
+apply_saved_link()
 
 
 def carry_over_skill():
@@ -20,10 +62,10 @@ def carry_over_skill():
         st.session_state.sim_roi_in = max(st.session_state.last_roi_pct, -99.0)
 
 
-def simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims):
+def simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims, seed):
     """Bankroll after each tournament for each run, shape (n_sims, n_tournaments).
-    A run stops playing (bankroll stays flat) once it can't cover the buy-in."""
-    rng = np.random.default_rng()
+    A run stops playing (bankroll stays flat) once it can't cover the buy-in. The same seed gives the same runs."""
+    rng = np.random.default_rng(seed)
     cdf = np.cumsum(p)
     cdf[-1] = 1.0
     places = np.searchsorted(cdf, rng.random((n_sims, n_tournaments)))
@@ -114,8 +156,23 @@ with output_col:
     if too_big:
         st.error("Simulations x tournaments per run must be 250,000 or fewer so the graph stays responsive.")
 
-    if run_slot.button("Run", type="primary", disabled=too_big, width="stretch"):
-        st.session_state.bankrolls = simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims)
+    clicked = run_slot.button("Run", type="primary", disabled=too_big, width="stretch")
+    auto_seed = st.session_state.pop("auto_seed", None)  # set when this page was opened from a saved-results address
+    if clicked or (auto_seed is not None and not too_big):
+        seed = random.randrange(2**32) if clicked else auto_seed
+        st.session_state.sim_seed = seed
+        st.session_state.bankrolls = simulate(p, v, buyin, start_bankroll, n_tournaments, n_sims, seed)
+
+    if st.session_state.bankrolls is not None:
+        link = "?" + urlencode({
+            "fs": X, "bi": buyin, "st": structure, "bk": start_bankroll, "mode": mode,
+            "roi": st.session_state.sim_roi_in, "c": st.session_state.sim_C_in,
+            "nt": n_tournaments, "ns": n_sims, "seed": st.session_state.sim_seed,
+        })
+        run_slot.html(
+            f'<a href="{link}" target="_blank" rel="noopener" style="color:#7a4a25; text-decoration:underline; '
+            f'font-size:0.8rem;">Save results in new tab</a>'
+        )
 
     # ---------- Graph ----------
     bankrolls = st.session_state.bankrolls
@@ -170,7 +227,7 @@ with output_col:
         )
         st.altair_chart(chart, width="stretch")
 
-        st.subheader("Distribution of ending bankrolls")
+        st.subheader("Final bankroll distribution")
         if runs < 2 or final.min() == final.max():
             st.caption("Needs at least two simulations that end at different bankrolls to draw a histogram.")
         else:
@@ -207,6 +264,12 @@ with output_col:
             gain = bankroll - start_bankroll
             return f"${bankroll:,.2f} ({'+' if gain >= 0 else '-'}${abs(gain):,.2f})"
 
+        # A tournament was played if the bankroll before it could cover the buy-in. Observed ROI is total profit
+        # over total buy-ins paid, across every tournament actually played in every run.
+        before = np.concatenate([np.full((runs, 1), float(start_bankroll)), bankrolls[:, :-1]], axis=1)
+        buyins_paid = (before >= buyin).sum() * buyin
+        observed_roi = f"{(final - start_bankroll).sum() / buyins_paid:.2%}" if buyins_paid > 0 else "n/a"
+
         end_cols = {
             "Min": final.min(),
             "25th percentile (Q1)": q1,
@@ -215,6 +278,7 @@ with output_col:
             "Max": final.max(),
             "Average (profit/loss)": with_result(final.mean()),
             "Expected result (profit/loss)": with_result(expected_end),
+            "Observed ROI": observed_roi,
         }
         numeric_cols = ["Min", "25th percentile (Q1)", "Median", "75th percentile (Q3)", "Max"]
         st.dataframe(
@@ -226,6 +290,9 @@ with output_col:
                 "Expected result (profit/loss)": st.column_config.TextColumn(
                     help="Starting bankroll plus (tournaments per run x buy-in x expected ROI). It assumes every "
                          "tournament is played, so it ignores runs that stop because they can't cover the buy-in."),
+                "Observed ROI": st.column_config.TextColumn(
+                    help="Total profit divided by total buy-ins paid, over every tournament actually played in every "
+                         "run."),
             },
         )
         st.subheader("Risk")

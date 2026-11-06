@@ -82,7 +82,9 @@ def wsop_shares(X: int) -> np.ndarray:
 # name -> function returning the share of the pool paid to each place (1st first) for X players
 # (or None if the structure has no data for X)
 PAYOUT_STRUCTURES = {"Lodge Card Club": lodge_card_club_shares, "WSOP": wsop_shares}
-MAX_PLAYERS = max(hi for _, hi, _ in load_lodge_card_club())
+# the largest field either structure has data for (Lodge shows "no payout data" for fields above its own limit)
+MAX_PLAYERS = max(max(hi for _, hi, _ in load_lodge_card_club()),
+                  max(int(p.stem.split("_")[1]) for p in WSOP_DIR.glob("wsop_*.csv")))
 
 
 def payouts(X: int, buyin: float, structure: str, mystery: bool):

@@ -1,4 +1,4 @@
-﻿"""The Methodology page. Everything below is plain text and formulas, so it is easy to edit."""
+"""The Methodology page. Everything below is plain text and formulas, so it is easy to edit."""
 import streamlit as st
 
 from shared_ui import restore_widget_state, soft_links
@@ -12,7 +12,7 @@ with st.container(border=True):
     st.markdown("**Contents**")
     st.markdown(
         "1. [Using the Chance of Doubling Up as a Skill Proxy](#using-c)\n"
-        "2. [Modeling Survival Effects](#survival-effects)"
+        "2. [Modeling the Survival Effect](#survival-effects)"
     )
 
 st.header("Using the Chance of Doubling Up as a Skill Proxy", anchor="using-c")
@@ -86,25 +86,19 @@ st.markdown(
 Now that we have this formula, we can calculate C for any tournament where we know the field size, payout structure,
 and our ROI.
 
-Chen wrote this section to inform edge passing decisions. There are many marginal situations in tournaments where you
-have the opportunity to risk all of your chips for a small positive expectation. If you believe you have a large edge on
-the field, it makes sense that you should reject risking your chips unless the positive expectation is large enough.
-Knowing your C quantifies this threshold. If you know you have a C of 0.58, you should avoid risking all of your chips
-in a QQ vs AK situation, where your chance of doubling is only 0.56.
+
 """
 )
 
 
 
-st.header("Modeling Survival Effects", anchor="survival-effects")
+st.header("Modeling the Survival Effect", anchor="survival-effects")
 st.markdown(
     """
 The Survival Effect Simulator is an attempt to mitigate the limitation that assuming C remains constant throughout the
-tournament presents. In his book, Chen takes C to be constant throughout the tournament, and assumes changes to C will be
-negligible. This makes using C much easier, but limits its validity. In reality, as a tournament progresses, players with
+tournament presents. In his book, Chen takes C to be constant throughout any given tournament. This makes using C much easier, but limits its validity. In reality, as a tournament progresses, players with
 higher Cs are more likely to remain in the field. This is commonly observed in the fact that as you get deeper in the
-tournament, the average player is better than at hand 1. This is a limitation of using C to measure field size effects
-on ROI.
+tournament, the average player is better than at hand 1. If a player has a C of .55 at the beginning of a tournament, on average it will decrease as the field consolidates.
 
 If we know we have a certain ROI in a tournament with 1000 players, and are wondering how our ROI will change in a field
 with 10000 players with an identical skill distribution, we can get a clean answer using the math above. However, the
