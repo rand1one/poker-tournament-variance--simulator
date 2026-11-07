@@ -2,7 +2,7 @@
 
 Same rules as the single-tournament simulator in app.py: every player has a C, each round pairs the
 remaining players at random, and a battle is a series of flips (both put in the shorter stack,
-P(a wins) = 0.5 + (C_a - C_b) / 2) until one player is out."""
+Bradley-Terry: P(a wins) = [C_a/(1-C_a)] / [C_a/(1-C_a) + C_b/(1-C_b)]) until one player is out."""
 import contextlib
 import os
 import sys
@@ -17,10 +17,12 @@ START_CHIPS = 1000
 
 def _battle(chips, cs, rows, a, b, rng):
     """One battle for every (tournament, pair) at once: a and b are (T, k) arrays of player ids.
-    Same rules as next_round: both put in the shorter stack, flip with P(a) = 0.5 + (C_a - C_b)/2,
-    repeat until one player is out. Updates chips; returns (winner ids, loser ids)."""
+    Both put in the shorter stack, flip with the Bradley-Terry probability P(a) = o_a / (o_a + o_b) where
+    o = C / (1 - C) are the players' odds (0.42 vs 0.52 gives 0.40 vs 0.60; against a 0.5 player you win with
+    probability exactly C), repeat until one player is out. Updates chips; returns (winner ids, loser ids)."""
     ca, cb = chips[rows, a], chips[rows, b]
-    p_a = 0.5 + (cs[rows, a] - cs[rows, b]) / 2
+    odds_a, odds_b = cs[rows, a] / (1 - cs[rows, a]), cs[rows, b] / (1 - cs[rows, b])
+    p_a = odds_a / (odds_a + odds_b)
     while True:
         active = (ca > 0) & (cb > 0)
         if not active.any():

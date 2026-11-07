@@ -12,10 +12,13 @@ with st.container(border=True):
     st.markdown("**Contents**")
     st.markdown(
         "1. [Using the Chance of Doubling Up as a Skill Proxy](#using-c)\n"
+        "    - [Calculating C](#calculating-c)\n"
         "2. [Modeling the Survival Effect](#survival-effects)"
     )
 
 st.header("Using the Chance of Doubling Up as a Skill Proxy", anchor="using-c")
+
+st.subheader("Calculating C", anchor="calculating-c")
 st.markdown(
     """
 Imagine you are playing an equally skilled 128 person tournament where all the prize money is given to first place.
@@ -85,12 +88,8 @@ st.markdown(
     """
 Now that we have this formula, we can calculate C for any tournament where we know the field size, payout structure,
 and our ROI.
-
-
 """
 )
-
-
 
 st.header("Modeling the Survival Effect", anchor="survival-effects")
 st.markdown(
@@ -98,7 +97,7 @@ st.markdown(
 The Survival Effect Simulator is an attempt to mitigate the limitation that assuming C remains constant throughout the
 tournament presents. In his book, Chen takes C to be constant throughout any given tournament. This makes using C much easier, but limits its validity. In reality, as a tournament progresses, players with
 higher Cs are more likely to remain in the field. This is commonly observed in the fact that as you get deeper in the
-tournament, the average player is better than at hand 1. If a player has a C of .55 at the beginning of a tournament, on average it will decrease as the field consolidates.
+tournament, the average player is better than at hand 1. If a player has a C of 0.55 at the beginning of a tournament, on average it will decrease as the field consolidates.
 
 If we know we have a certain ROI in a tournament with 1000 players, and are wondering how our ROI will change in a field
 with 10000 players with an identical skill distribution, we can get a clean answer using the math above. However, the
@@ -106,13 +105,33 @@ survival effect is going to be stronger in the larger field, since there is addi
 Measuring this effect precisely is impractical, but my model makes an initial attempt at an empirical assessment.
 
 The survival simulator generates players each with initial C values and chip stacks, then has them engage in heads up
-matches where one player wins and doubles up and the other loses and is eliminated. Each player's chance of winning their
-match is determined by their own C and their opponent's C. This requires shifting each player's C so that the two
-players' Cs average 0.5. If a player with a C of 0.55 was facing a player with a C of 0.51, the chances of winning the
-match would be 0.52 and 0.48, respectively. After all players have finished their match, the process is repeated until
-there is a winner. To determine finishing position in each round, the matches are played in random order. So with 8
-players left, 4 matches would occur this round, and the loser of the first match would get 8th, and the loser of the 4th
-match would get 5th.
+matches where one player wins and doubles up and the other loses and is eliminated. To find the chance each player has
+of winning their match, I used the Bradley-Terry pairwise comparison model, which calculates the probability of a player
+winning from the ratio of each player's odds against an average reference opponent with a C of 0.5:[¹](#notes)
+"""
+)
+st.latex(r"\frac{C_i}{1 - C_i} = p_i")
+st.latex(r"\frac{p_i}{p_i + p_j} = P(i \text{ wins against } j)")
+st.markdown(
+    """
+p<sub>i</sub> is the odds (wins/losses) for each player against the reference opponent. Putting it all together we have the
+equation
+""",
+    unsafe_allow_html=True,
+)
+st.latex(r"P(A \text{ wins}) = \frac{C_A / (1 - C_A)}{C_A / (1 - C_A) + C_B / (1 - C_B)}")
+st.markdown(
+    """
+If we select player *A* with a C of 0.46 and *B* with a C of 0.55, we can find the win probability of *A* as:
+"""
+)
+st.latex(r"P(A \text{ wins}) = \frac{0.46 / (1 - 0.46)}{0.46 / (1 - 0.46) + 0.55 / (1 - 0.55)}"
+         r" = \frac{0.46 / 0.54}{0.46 / 0.54 + 0.55 / 0.45} = \frac{0.852}{0.852 + 1.222} = 0.411")
+st.markdown(
+    """
+After all players have finished their match, the process is repeated until there is a winner.
+To determine finishing position in each round, the matches are played in random order. So with 8 players left, 4 matches
+would occur this round, and the loser of the first match would get 8th, and the loser of the 4th match would get 5th.
 
 Thus far I have described how the play of the tournament functions, but we must decide how to assign reasonable Cs to
 generated players, that is, how is skill level distributed in poker tournaments? There are 2 reasonable models: normally
@@ -133,3 +152,6 @@ Real tournaments are much messier than this match play format, but I believe tha
 the survival effect as it relates to field size.
 """
 )
+
+st.subheader("Notes", anchor="notes")
+st.markdown("¹ The Elo system in chess is based on this model.")
