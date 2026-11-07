@@ -140,16 +140,13 @@ this are that it is simple and consistent. The downside is that this is unlikely
 tournaments. The reality is more likely to be bimodal, with the peaks representing professionals and recreational
 players. While more accurate, there is no good data on the expected proportions, and it is highly variable depending on
 the tournament. In the most competitive, highest-stakes tournaments, there may be only 10% recreational players, whereas
-in a tournament like the Main Event, it is likely >75%. I decided to add the option of both.
+in a tournament like the WSOP Main Event, it is likely >75%. I decided to add the option of both.
 
 For the rec/pro model, I assumed a difference of 0.075 in average C values between the two groups. The average C value of
 recreationals changes linearly depending on the % entered, and may be anywhere from 0.425 to 0.5, with the professional
 mean being 0.075 points higher. The specific group means change depending on the proportion chosen. The remaining
 fraction of professionals is then generated around a C that makes the field average to 0.5. Example: If 80% recreationals
 is inputted, the 80% recreationals have a mean C of 0.485 and the 20% professionals have a mean C of 0.56.
-
-Real tournaments are much messier than this match play format, but I believe that this model captures the majority of
-the survival effect as it relates to field size.
 """
 )
 

@@ -254,9 +254,8 @@ with output_col:
                 .properties(height=300)
             )
             st.altair_chart(dist_chart, width="stretch")
-            st.caption(f"{len(counts)} bins, each ${edges[1] - edges[0]:,.0f} wide.")
 
-        st.subheader("Bankroll at end of run")
+        st.subheader("Results")
         q1, q3 = np.percentile(final, [25, 75])
 
         def with_result(bankroll):
@@ -270,44 +269,28 @@ with output_col:
         buyins_paid = (before >= buyin).sum() * buyin
         observed_roi = f"{(final - start_bankroll).sum() / buyins_paid:.2%}" if buyins_paid > 0 else "n/a"
 
-        end_cols = {
-            "Min": final.min(),
-            "25th percentile (Q1)": q1,
-            "Median": np.median(final),
-            "75th percentile (Q3)": q3,
-            "Max": final.max(),
+        # One table, one statistic per row. Values are pre-formatted strings because the rows mix dollars and percents.
+        rows = {
+            "Min": f"${final.min():,.2f}",
+            "25th percentile (Q1)": f"${q1:,.2f}",
+            "Median": f"${np.median(final):,.2f}",
+            "75th percentile (Q3)": f"${q3:,.2f}",
+            "Max": f"${final.max():,.2f}",
             "Average (profit/loss)": with_result(final.mean()),
             "Expected result (profit/loss)": with_result(expected_end),
             "Observed ROI": observed_roi,
+            "Std dev of ending bankroll": f"${(final.std(ddof=1) if runs > 1 else 0.0):,.2f}",
+            "Risk of ruin": f"{np.mean(np.minimum(bankrolls.min(axis=1), start_bankroll) < buyin):.2%}",
+            "Likelihood of loss": f"{np.mean(final < start_bankroll):.2%}",
         }
-        numeric_cols = ["Min", "25th percentile (Q1)", "Median", "75th percentile (Q3)", "Max"]
         st.dataframe(
-            pd.DataFrame({name: [value] for name, value in end_cols.items()}),
+            pd.DataFrame({"Statistic": list(rows), "Value": list(rows.values())}),
             hide_index=True,
-            width="stretch",
+            width="content",
+            height=(len(rows) + 1) * 35 + 3,  # show every row without a scrollbar
             column_config={
-                **{c: st.column_config.NumberColumn(format="$%.2f") for c in numeric_cols},
-                "Expected result (profit/loss)": st.column_config.TextColumn(
-                    help="Starting bankroll plus (tournaments per run x buy-in x expected ROI). It assumes every "
-                         "tournament is played, so it ignores runs that stop because they can't cover the buy-in."),
-                "Observed ROI": st.column_config.TextColumn(
-                    help="Total profit divided by total buy-ins paid, over every tournament actually played in every "
-                         "run."),
-            },
-        )
-        st.subheader("Risk")
-        st.dataframe(
-            pd.DataFrame({
-                "Std dev of ending bankroll": [final.std(ddof=1) if runs > 1 else 0.0],
-                "Risk of ruin": [np.mean(np.minimum(bankrolls.min(axis=1), start_bankroll) < buyin)],
-                "Likelihood of loss": [np.mean(final < start_bankroll)],
-            }),
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Std dev of ending bankroll": st.column_config.NumberColumn(format="$%.2f"),
-                "Risk of ruin": st.column_config.NumberColumn(format="percent"),
-                "Likelihood of loss": st.column_config.NumberColumn(format="percent"),
+                "Statistic": st.column_config.TextColumn(width=240),
+                "Value": st.column_config.TextColumn(width=180),
             },
         )
 
